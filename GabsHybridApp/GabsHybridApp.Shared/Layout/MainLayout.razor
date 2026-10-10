@@ -10,6 +10,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager NavManager
 @inject IDialogService DialogService
+@inject IAppThemeService AppThemeService
 
 <AntiforgeryToken />
 
@@ -197,12 +198,14 @@
         _isDarkMode = !_isDarkMode;
         StorageConstants.IsDarkMode = _isDarkMode;
         await localStorage.SetItemAsync("isDarkMode", _isDarkMode);
+        await AppThemeService.SetThemeAsync(_isDarkMode);
     }
 
     protected override async Task OnInitializedAsync()
     {
         _isDarkMode = await localStorage.GetItemAsync<bool>("isDarkMode");
         StorageConstants.IsDarkMode = _isDarkMode;
+        await AppThemeService.SetThemeAsync(_isDarkMode);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
