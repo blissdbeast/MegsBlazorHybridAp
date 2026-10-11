@@ -23,6 +23,116 @@ namespace GabsHybridApp.Web.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("GabsHybridApp.Shared.Models.AnswerSheetScan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AssessmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DetectedStudentIdNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DetectedVersion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("MaxScore")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("ParsedAnswersJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("RequiresReview")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ReviewNotes")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ScannedAtUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ScannedPhotoUrl")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("StudentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("TotalScore")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentId");
+
+                    b.HasIndex("AssessmentId", "DetectedStudentIdNumber");
+
+                    b.ToTable("AnswerSheetScans", "GabsHybridApp");
+                });
+
+            modelBuilder.Entity("GabsHybridApp.Shared.Models.Assessment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("OptionsPerQuestion")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("QuestionCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Section")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Assessments", "GabsHybridApp");
+                });
+
+            modelBuilder.Entity("GabsHybridApp.Shared.Models.AssessmentKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AssessmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CorrectAnswersJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("PointsPerQuestion")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("VersionLabel")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssessmentId");
+
+                    b.ToTable("AssessmentKeys", "GabsHybridApp");
+                });
+
             modelBuilder.Entity("GabsHybridApp.Shared.Models.BackupRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -451,6 +561,38 @@ namespace GabsHybridApp.Web.Migrations
                     b.ToTable("RegisteredDevices", "GabsHybridApp");
                 });
 
+            modelBuilder.Entity("GabsHybridApp.Shared.Models.Student", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("text");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Section")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StudentIdNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentIdNumber")
+                        .IsUnique();
+
+                    b.ToTable("Students", "GabsHybridApp");
+                });
+
             modelBuilder.Entity("GabsHybridApp.Shared.Models.UserAccount", b =>
                 {
                     b.Property<Guid>("Id")
@@ -488,6 +630,35 @@ namespace GabsHybridApp.Web.Migrations
                     b.ToTable("UserAccounts", "GabsHybridApp");
                 });
 
+            modelBuilder.Entity("GabsHybridApp.Shared.Models.AnswerSheetScan", b =>
+                {
+                    b.HasOne("GabsHybridApp.Shared.Models.Assessment", "Assessment")
+                        .WithMany("Scans")
+                        .HasForeignKey("AssessmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GabsHybridApp.Shared.Models.Student", "Student")
+                        .WithMany("Scans")
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Assessment");
+
+                    b.Navigation("Student");
+                });
+
+            modelBuilder.Entity("GabsHybridApp.Shared.Models.AssessmentKey", b =>
+                {
+                    b.HasOne("GabsHybridApp.Shared.Models.Assessment", "Assessment")
+                        .WithMany("Keys")
+                        .HasForeignKey("AssessmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Assessment");
+                });
+
             modelBuilder.Entity("GabsHybridApp.Shared.Models.Notification", b =>
                 {
                     b.HasOne("GabsHybridApp.Shared.Models.UserAccount", "User")
@@ -514,9 +685,21 @@ namespace GabsHybridApp.Web.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("GabsHybridApp.Shared.Models.Assessment", b =>
+                {
+                    b.Navigation("Keys");
+
+                    b.Navigation("Scans");
+                });
+
             modelBuilder.Entity("GabsHybridApp.Shared.Models.Order", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("GabsHybridApp.Shared.Models.Student", b =>
+                {
+                    b.Navigation("Scans");
                 });
 #pragma warning restore 612, 618
         }

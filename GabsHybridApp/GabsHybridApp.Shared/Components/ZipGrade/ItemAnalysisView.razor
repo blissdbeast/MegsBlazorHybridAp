@@ -1,0 +1,204 @@
+@using GabsHybridApp.Shared.Models
+@using GabsHybridApp.Shared.Services
+@using MudBlazor
+@inject IItemAnalysisService ItemAnalysisService
+
+@* SECTION: Psychometric Overview Metrics *@
+<MudGrid Class="mb-4">
+    <MudItem xs="6" sm="3">
+        <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+            <div class="d-flex justify-space-between align-center">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Total Papers</MudText>
+                    <MudText Typo="Typo.h5" Class="font-weight-bold">@Assessment.Scans.Count</MudText>
+                </div>
+                <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Medium">
+                    <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                </MudAvatar>
+            </div>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="3">
+        <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+            <div class="d-flex justify-space-between align-center">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Class Average</MudText>
+                    <MudText Typo="Typo.h5" Color="Color.Info" Class="font-weight-bold">
+                        @(Assessment.Scans.Count > 0 ? $"{Math.Round(Assessment.Scans.Average(s => s.Percentage), 1)}%" : "N/A")
+                    </MudText>
+                </div>
+                <MudAvatar Color="Color.Info" Variant="Variant.Outlined" Size="Size.Medium">
+                    <MudIcon Icon="@Icons.Material.Filled.Analytics" Size="Size.Small" />
+                </MudAvatar>
+            </div>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="3">
+        <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+            <div class="d-flex justify-space-between align-center">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Highest Score</MudText>
+                    <MudText Typo="Typo.h5" Color="Color.Success" Class="font-weight-bold">
+                        @(Assessment.Scans.Count > 0 ? $"{Assessment.Scans.Max(s => s.TotalScore)} Pts" : "0")
+                    </MudText>
+                </div>
+                <MudAvatar Color="Color.Success" Variant="Variant.Outlined" Size="Size.Medium">
+                    <MudIcon Icon="@Icons.Material.Filled.EmojiEvents" Size="Size.Small" />
+                </MudAvatar>
+            </div>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="3">
+        <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+            <div class="d-flex justify-space-between align-center">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Items Needing Review</MudText>
+                    <MudText Typo="Typo.h5" Color="Color.Warning" Class="font-weight-bold">
+                        @_itemsNeedingReviewCount
+                    </MudText>
+                </div>
+                <MudAvatar Color="Color.Warning" Variant="Variant.Outlined" Size="Size.Medium">
+                    <MudIcon Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" />
+                </MudAvatar>
+            </div>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@* SECTION: Item Psychometric Analysis Table *@
+@* DESIGN LANGUAGE: Responsive Table Container — Zero mobile elevation/padding, desktop surface paper *@
+<MudPaper Elevation="0" Class="pa-0 pa-sm-4 mud-elevation-sm-3 bg-transparent bg-sm-surface rounded-lg">
+    <div class="d-flex justify-space-between align-center mb-3 px-2 px-sm-0">
+        <div>
+            <MudText Typo="Typo.h6" Class="font-weight-bold">Item Psychometric Analysis</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Difficulty Index (P) indicates pass rate. Discrimination Index (D) indicates distinction between top and lower quartile performers.
+            </MudText>
+        </div>
+        <MudSelect T="string" Label="Analyze Version" Value="_selectedVersionLabel" ValueChanged="OnVersionChanged" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 150px;">
+            @foreach (var key in Assessment.Keys)
+            {
+                <MudSelectItem Value="@key.VersionLabel">Version @key.VersionLabel</MudSelectItem>
+            }
+        </MudSelect>
+    </div>
+
+    <MudTable Items="_metrics" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" Elevation="0">
+        <HeaderContent>
+            <MudTh>Question</MudTh>
+            <MudTh>Key</MudTh>
+            <MudTh>Difficulty (P)</MudTh>
+            <MudTh>Discrimination (D)</MudTh>
+            <MudTh>Distractor Distribution (A, B, C, D, E)</MudTh>
+            <MudTh>Diagnostic Status</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Question">
+                <MudText Typo="Typo.subtitle2" Class="font-weight-bold">Q@context.QuestionNumber</MudText>
+            </MudTd>
+            <MudTd DataLabel="Key">
+                <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Filled">
+                    @(context.CorrectAnswers.Count > 0 ? string.Join(", ", context.CorrectAnswers) : "None")
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Difficulty (P)">
+                <div style="min-width: 140px;">
+                    <div class="d-flex justify-space-between align-center">
+                        <MudText Typo="Typo.caption" Class="font-weight-bold">@context.DifficultyIndex.ToString("0.00")</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.DifficultyLabel</MudText>
+                    </div>
+                    <MudProgressLinear Color="@GetDifficultyColor(context.DifficultyIndex)" Value="@((int)(context.DifficultyIndex * 100))" Rounded="true" Size="Size.Small" Class="mt-1" />
+                </div>
+            </MudTd>
+            <MudTd DataLabel="Discrimination (D)">
+                <div class="d-flex align-center gap-2">
+                    <MudChip T="string" Color="@GetDiscriminationColor(context.DiscriminationIndex)" Size="Size.Small" Variant="Variant.Outlined">
+                        D: @context.DiscriminationIndex.ToString("+0.00;-0.00;0.00")
+                    </MudChip>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.DiscriminationLabel</MudText>
+                </div>
+            </MudTd>
+            <MudTd DataLabel="Distractor Distribution">
+                <div class="d-flex align-center gap-1 flex-wrap">
+                    @foreach (var opt in new[] { "A", "B", "C", "D" })
+                    {
+                        int count = context.OptionDistribution.TryGetValue(opt, out var c) ? c : 0;
+                        bool isCorrect = context.CorrectAnswers.Contains(opt);
+
+                        <span style="@($"padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; {(isCorrect ? "background:#2e7d32; color:#ffffff;" : "background:rgba(0,0,0,0.06); color:var(--mud-palette-text-secondary);")}")">
+                            @opt: @count
+                        </span>
+                    }
+                </div>
+            </MudTd>
+            <MudTd DataLabel="Diagnostic Status">
+                @if (context.DiscriminationIndex < 0.20 && context.TotalAttempts >= 4)
+                {
+                    <MudChip T="string" Color="Color.Error" Size="Size.Small" Variant="Variant.Filled" Icon="@Icons.Material.Filled.Warning">
+                        Review Question
+                    </MudChip>
+                }
+                else if (context.DifficultyIndex < 0.25)
+                {
+                    <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Outlined">
+                        Challenging
+                    </MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Check">
+                        Balanced
+                    </MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    [Parameter] public Assessment Assessment { get; set; } = default!;
+
+    private string _selectedVersionLabel = "A";
+    private List<ItemAnalysisMetric> _metrics = new();
+    private int _itemsNeedingReviewCount => _metrics.Count(m => m.DiscriminationIndex < 0.20 && m.TotalAttempts >= 4);
+
+    protected override void OnInitialized()
+    {
+        if (Assessment.Keys.Any())
+        {
+            _selectedVersionLabel = Assessment.Keys.First().VersionLabel;
+        }
+        LoadAnalysis();
+    }
+
+    private void OnVersionChanged(string version)
+    {
+        _selectedVersionLabel = version;
+        LoadAnalysis();
+    }
+
+    private void LoadAnalysis()
+    {
+        var key = Assessment.Keys.FirstOrDefault(k => k.VersionLabel == _selectedVersionLabel)
+                  ?? Assessment.Keys.FirstOrDefault()
+                  ?? new AssessmentKey();
+
+        _metrics = ItemAnalysisService.AnalyzeAssessment(Assessment, key);
+    }
+
+    private Color GetDifficultyColor(double p) => p switch
+    {
+        < 0.25 => Color.Error,
+        < 0.50 => Color.Warning,
+        < 0.85 => Color.Success,
+        _ => Color.Info
+    };
+
+    private Color GetDiscriminationColor(double d) => d switch
+    {
+        < 0.20 => Color.Error,
+        < 0.30 => Color.Warning,
+        < 0.40 => Color.Info,
+        _ => Color.Success
+    };
+}

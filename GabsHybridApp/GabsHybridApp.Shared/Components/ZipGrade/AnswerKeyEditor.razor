@@ -1,0 +1,232 @@
+@using GabsHybridApp.Shared.Models
+@using GabsHybridApp.Shared.Services
+@using MudBlazor
+@inject IAssessmentService AssessmentService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+@* SECTION: Answer Key Toolbar *@
+<MudPaper Elevation="0" Outlined="true" Class="pa-3 mb-4 rounded-lg bg-surface">
+    <div class="d-flex flex-wrap align-center justify-space-between gap-3">
+        <div class="d-flex align-center gap-3">
+            <MudSelect T="string" Label="Exam Version" Value="_selectedVersionLabel" ValueChanged="OnVersionChanged" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 140px;">
+                @foreach (var key in Assessment.Keys)
+                {
+                    <MudSelectItem Value="@key.VersionLabel">Version @key.VersionLabel</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudNumericField T="decimal" Label="Points Per Question" @bind-Value="_currentKey.PointsPerQuestion" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0.1m" Max="100m" Step="0.5m" Style="max-width: 150px;" />
+        </div>
+
+        <div class="d-flex align-center gap-2 flex-wrap">
+            <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.CameraAlt" Size="Size.Small" OnClick="ScanMasterKeySheetAsync">
+                Scan Master Sheet
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Add" Size="Size.Small" OnClick="AddNewVersion">
+                Add Version
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small" OnClick="ClearAllKeys">
+                Clear Keys
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" Size="Size.Small" OnClick="SaveKeyAsync">
+                Save Answer Key
+            </MudButton>
+        </div>
+    </div>
+</MudPaper>
+
+@* SECTION: Interactive Bubble Answer Key Grid *@
+<MudPaper Elevation="1" Class="pa-4 rounded-lg">
+    <div class="d-flex justify-space-between align-center mb-3">
+        <div>
+            <MudText Typo="Typo.h6" Class="font-weight-bold">Answer Key — Version @_selectedVersionLabel</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Click bubble letters to mark correct answers. Multi-selection is supported for questions with multiple correct options.
+            </MudText>
+        </div>
+        <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Filled">
+            Total Max: @(Assessment.QuestionCount * _currentKey.PointsPerQuestion) Pts
+        </MudChip>
+    </div>
+
+    <MudGrid Spacing="2">
+        @for (int q = 1; q <= Assessment.QuestionCount; q++)
+        {
+            int qNum = q;
+            var currentSelections = _answersMap.TryGetValue(qNum, out var list) ? list : new List<string>();
+
+            <MudItem xs="12" sm="6" md="4" lg="3">
+                <MudPaper Outlined="true" Class="pa-2 rounded d-flex align-center justify-space-between" Style="@(currentSelections.Count > 0 ? "background-color: var(--mud-palette-surface);" : "background-color: rgba(255, 193, 7, 0.05);")">
+                    <MudText Typo="Typo.body2" Class="font-weight-bold mr-2" Style="min-width: 32px;">
+                        @qNum.ToString("D2").
+                    </MudText>
+
+                    <div class="d-flex gap-1">
+                        @for (int opt = 0; opt < Assessment.OptionsPerQuestion; opt++)
+                        {
+                            string letter = ((char)('A' + opt)).ToString();
+                            bool isSelected = currentSelections.Contains(letter);
+
+                            <button type="button" 
+                                    class="@($"bubble-button {(isSelected ? "bubble-selected" : "")}")" 
+                                    @onclick="() => ToggleAnswer(qNum, letter)">
+                                @letter
+                            </button>
+                        }
+                    </div>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+</MudPaper>
+
+<style>
+    .bubble-button {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 1.5px solid var(--mud-palette-lines-default);
+        background: transparent;
+        color: var(--mud-palette-text-primary);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease-in-out;
+    }
+
+    .bubble-button:hover {
+        border-color: var(--mud-palette-primary);
+        background-color: rgba(33, 150, 243, 0.1);
+    }
+
+    .bubble-selected {
+        background-color: var(--mud-palette-primary) !important;
+        border-color: var(--mud-palette-primary) !important;
+        color: #ffffff !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+</style>
+
+@code {
+    [Parameter] public Assessment Assessment { get; set; } = default!;
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private string _selectedVersionLabel = "A";
+    private AssessmentKey _currentKey = new();
+    private Dictionary<int, List<string>> _answersMap = new();
+
+    protected override void OnInitialized()
+    {
+        LoadActiveKey();
+    }
+
+    private void LoadActiveKey()
+    {
+        _currentKey = Assessment.Keys.FirstOrDefault(k => k.VersionLabel == _selectedVersionLabel)
+                      ?? Assessment.Keys.FirstOrDefault()
+                      ?? new AssessmentKey
+                      {
+                          Id = Guid.CreateVersion7(),
+                          AssessmentId = Assessment.Id,
+                          VersionLabel = _selectedVersionLabel
+                      };
+
+        _selectedVersionLabel = _currentKey.VersionLabel;
+        _answersMap = _currentKey.GetAnswers();
+    }
+
+    private void OnVersionChanged(string version)
+    {
+        _selectedVersionLabel = version;
+        LoadActiveKey();
+    }
+
+    private void ToggleAnswer(int questionNumber, string option)
+    {
+        if (!_answersMap.TryGetValue(questionNumber, out var list))
+        {
+            list = new List<string>();
+            _answersMap[questionNumber] = list;
+        }
+
+        if (list.Contains(option))
+        {
+            list.Remove(option);
+            if (list.Count == 0) _answersMap.Remove(questionNumber);
+        }
+        else
+        {
+            list.Add(option);
+            list.Sort();
+        }
+
+        _currentKey.SetAnswers(_answersMap);
+    }
+
+    private void AddNewVersion()
+    {
+        char nextChar = (char)('A' + Assessment.Keys.Count);
+        if (nextChar > 'D')
+        {
+            Snackbar.Add("Maximum 4 versions (A, B, C, D) supported.", Severity.Warning);
+            return;
+        }
+
+        string newVersion = nextChar.ToString();
+        var newKey = new AssessmentKey
+        {
+            Id = Guid.CreateVersion7(),
+            AssessmentId = Assessment.Id,
+            VersionLabel = newVersion,
+            PointsPerQuestion = _currentKey.PointsPerQuestion,
+            CorrectAnswersJson = "{}"
+        };
+
+        Assessment.Keys.Add(newKey);
+        _selectedVersionLabel = newVersion;
+        LoadActiveKey();
+        Snackbar.Add($"Added Answer Key Version {newVersion}.", Severity.Info);
+    }
+
+    private void ClearAllKeys()
+    {
+        _answersMap.Clear();
+        _currentKey.SetAnswers(_answersMap);
+        Snackbar.Add("Cleared all answers for this version.", Severity.Info);
+    }
+
+    private async Task SaveKeyAsync()
+    {
+        _currentKey.SetAnswers(_answersMap);
+        await AssessmentService.SaveAssessmentKeyAsync(_currentKey);
+        Snackbar.Add($"Answer Key Version {_selectedVersionLabel} saved successfully!", Severity.Success);
+        await OnSaved.InvokeAsync();
+    }
+
+    private async Task ScanMasterKeySheetAsync()
+    {
+        var parameters = new DialogParameters<ScannerDialog>
+        {
+            { x => x.Assessment, Assessment }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<ScannerDialog>("Scan Master Answer Key Sheet", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            // If the teacher scanned a master sheet, reload assessment
+            var refreshed = await AssessmentService.GetAssessmentByIdAsync(Assessment.Id);
+            if (refreshed != null)
+            {
+                Assessment = refreshed;
+                LoadActiveKey();
+            }
+        }
+    }
+}

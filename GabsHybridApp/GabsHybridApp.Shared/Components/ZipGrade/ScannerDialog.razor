@@ -1,0 +1,393 @@
+@using GabsHybridApp.Shared.Models
+@using GabsHybridApp.Shared.Services
+@using MudBlazor
+@inject ICameraService CameraService
+@inject IOmrScannerService OmrScannerService
+@inject IScoringService ScoringService
+@inject IAssessmentService AssessmentService
+@inject ISnackbar Snackbar
+
+@* DESIGN LANGUAGE: Sticky Modal Footer — Mobile full-width stacked / Desktop right-aligned action buttons *@
+<MudDialog>
+    <DialogContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="pa-2 pa-sm-4">
+            @* SECTION: Scan Action Controls *@
+            <MudPaper Elevation="0" Outlined="true" Class="pa-3 mb-4 rounded-lg bg-surface">
+                <div class="d-flex flex-wrap align-center justify-space-between gap-3">
+                    <div class="d-flex align-center gap-2">
+                        <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Medium">
+                            <MudIcon Icon="@Icons.Material.Filled.DocumentScanner" Size="Size.Small" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">@Assessment.Title</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Layout: @Assessment.QuestionCount Questions &bull; Options: @Assessment.OptionsPerQuestion &bull; Version Key: @_selectedVersion
+                            </MudText>
+                        </div>
+                    </div>
+
+                    <div class="d-flex align-center gap-2 flex-wrap">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PhotoCamera" OnClick="CapturePhotoAsync" Disabled="_isProcessing">
+                            Capture Photo
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.PhotoLibrary" OnClick="BrowsePhotoAsync" Disabled="_isProcessing">
+                            Browse Photo
+                        </MudButton>
+                        <InputFile id="scannerFileInput" OnChange="OnFileSelected" hidden accept="image/*" />
+                        <MudButton HtmlTag="label" Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.UploadFile" for="scannerFileInput" Disabled="_isProcessing">
+                            Upload File
+                        </MudButton>
+                    </div>
+                </div>
+            </MudPaper>
+
+            @if (_isProcessing)
+            {
+                <MudPaper Class="pa-8 d-flex flex-column align-center justify-center rounded-lg" Elevation="0">
+                    <MudProgressCircular Color="Color.Primary" Size="Size.Large" Indeterminate="true" Class="mb-3" />
+                    <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Processing Bubble Sheet...</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Performing 4-corner fiducial localization, homography perspective rectification, and fill-ratio sampling.</MudText>
+                </MudPaper>
+            }
+            else if (_scanResult != null)
+            {
+                @* SECTION: Graded Result Banner *@
+                <MudPaper Elevation="1" Class="pa-4 mb-4 rounded-lg" Style="@($"border-left: 6px solid {GetScoreColorHex()};")">
+                    <div class="d-flex flex-wrap justify-space-between align-center gap-4">
+                        <div class="d-flex align-center gap-3">
+                            <MudAvatar Color="@GetScoreMudColor()" Variant="Variant.Filled" Size="Size.Large">
+                                <MudText Typo="Typo.h5" Class="font-weight-bold">@_scoreResult?.LetterGrade</MudText>
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h5" Class="font-weight-bold">
+                                    @_scoreResult?.TotalScore / @_scoreResult?.MaxScore Points
+                                    <span class="ml-2 font-weight-normal" style="font-size: 1.1rem; color: var(--mud-palette-text-secondary);">
+                                        (@(_scoreResult?.Percentage)%)
+                                    </span>
+                                </MudText>
+                                <div class="d-flex align-center gap-2 mt-1">
+                                    <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Outlined">
+                                        ID: @(_matchedStudent?.StudentIdNumber ?? _scanResult.DetectedStudentId)
+                                    </MudChip>
+                                    <MudChip T="string" Color="Color.Default" Size="Size.Small" Variant="Variant.Outlined">
+                                        @(_matchedStudent?.FullName ?? "Unknown Student")
+                                    </MudChip>
+                                    <MudChip T="string" Color="Color.Info" Size="Size.Small" Variant="Variant.Outlined">
+                                        Version @_selectedVersion
+                                    </MudChip>
+                                    @if (_scanResult.RequiresReview)
+                                    {
+                                        <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Filled" Icon="@Icons.Material.Filled.Warning">
+                                            Review Needed
+                                        </MudChip>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex align-center gap-2">
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Check" OnClick="SaveScanResultAsync" Disabled="_isSaved">
+                                @(_isSaved ? "Saved to Gradebook" : "Save to Gradebook")
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowForward" OnClick="ResetForNextScan">
+                                Scan Next
+                            </MudButton>
+                        </div>
+                    </div>
+                </MudPaper>
+
+                @* SECTION: Visual Rectified Image & Item Breakdown Grid *@
+                <MudGrid Spacing="3">
+                    @* Column 1: Rectified Graded Image with Overlay *@
+                    <MudItem xs="12" md="6">
+                        <MudPaper Elevation="1" Class="pa-3 rounded-lg">
+                            <div class="d-flex justify-space-between align-center mb-2">
+                                <MudText Typo="Typo.subtitle2" Class="font-weight-bold">Graded Answer Sheet View</MudText>
+                                <div class="d-flex align-center gap-1">
+                                    <span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:#2e7d32;" class="mr-1"></span>
+                                    <MudText Typo="Typo.caption" Class="mr-2">Correct</MudText>
+                                    <span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:#d32f2f;" class="mr-1"></span>
+                                    <MudText Typo="Typo.caption" Class="mr-2">Incorrect</MudText>
+                                    <span style="display:inline-block; width:12px; height:12px; border-radius:50%; border:2px dashed #f57c00;" class="mr-1"></span>
+                                    <MudText Typo="Typo.caption">Key</MudText>
+                                </div>
+                            </div>
+
+                            @if (!string.IsNullOrEmpty(_scanResult.RectifiedImageUrl))
+                            {
+                                <div style="position:relative; width:100%; border:1px solid #ccc; border-radius:6px; overflow:hidden;">
+                                    <img src="@_scanResult.RectifiedImageUrl" style="width:100%; height:auto; display:block;" alt="Graded Scantron Sheet" />
+                                </div>
+                            }
+                        </MudPaper>
+                    </MudItem>
+
+                    @* Column 2: Student Matching & Item-by-Item Breakdown *@
+                    <MudItem xs="12" md="6">
+                        <MudPaper Elevation="1" Class="pa-3 rounded-lg mb-3">
+                            <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-2">Student & Version Assignment</MudText>
+                            <MudGrid Spacing="2">
+                                <MudItem xs="12" sm="6">
+                                    <MudSelect T="Student" Label="Matched Student" Value="_matchedStudent" ValueChanged="OnStudentChanged" Variant="Variant.Outlined" Margin="Margin.Dense" ToStringFunc="@(s => s != null ? $"{s.StudentIdNumber} - {s.FullName}" : "Select Student")">
+                                        @foreach (var student in _students)
+                                        {
+                                            <MudSelectItem Value="@student">@student.StudentIdNumber - @student.FullName</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudSelect T="string" Label="Key Version" Value="_selectedVersion" ValueChanged="OnVersionChanged" Variant="Variant.Outlined" Margin="Margin.Dense">
+                                        @foreach (var key in Assessment.Keys)
+                                        {
+                                            <MudSelectItem Value="@key.VersionLabel">Version @key.VersionLabel</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+
+                        <MudPaper Elevation="1" Class="pa-3 rounded-lg">
+                            <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-2">Item Response Breakdown</MudText>
+                            <div style="max-height: 400px; overflow-y: auto;" class="pr-1">
+                                @if (_scoreResult != null)
+                                {
+                                    <MudGrid Spacing="1">
+                                        @foreach (var item in _scoreResult.Details)
+                                        {
+                                            <MudItem xs="6" sm="4">
+                                                <MudPaper Outlined="true" Class="pa-2 d-flex align-center justify-space-between rounded" Style="@(item.IsCorrect ? "background-color: rgba(46, 125, 50, 0.08);" : "background-color: rgba(211, 47, 47, 0.08);")">
+                                                    <div>
+                                                        <MudText Typo="Typo.caption" Class="font-weight-bold">Q@item.QuestionNumber</MudText>
+                                                        <div class="d-flex align-center gap-1">
+                                                            <MudText Typo="Typo.body2" Class="font-weight-bold" Color="@(item.IsCorrect ? Color.Success : Color.Error)">
+                                                                @(item.StudentAnswers.Count > 0 ? string.Join(",", item.StudentAnswers) : "Blank")
+                                                            </MudText>
+                                                            @if (!item.IsCorrect && item.KeyAnswers.Count > 0)
+                                                            {
+                                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                                    (Key: @string.Join(",", item.KeyAnswers))
+                                                                </MudText>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                    <MudIcon Icon="@(item.IsCorrect ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)" Color="@(item.IsCorrect ? Color.Success : Color.Error)" Size="Size.Small" />
+                                                </MudPaper>
+                                            </MudItem>
+                                        }
+                                    </MudGrid>
+                                }
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+            }
+            else
+            {
+                <MudPaper Class="pa-12 d-flex flex-column align-center justify-center rounded-lg" Elevation="0" Outlined="true" Style="border-style: dashed; border-width: 2px;">
+                    <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Large" Class="mb-3">
+                        <MudIcon Icon="@Icons.Material.Filled.CameraAlt" Size="Size.Medium" />
+                    </MudAvatar>
+                    <MudText Typo="Typo.h6" Class="font-weight-bold mb-1">Ready to Grade Bubble Sheets</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center mb-4" Style="max-width: 480px;">
+                        Align the 4 black corner squares of the printed sheet within the camera viewfinder or upload a photo to instantly scan and score.
+                    </MudText>
+                    <div class="d-flex gap-2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PhotoCamera" OnClick="CapturePhotoAsync">
+                            Start Camera Scan
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.PhotoLibrary" OnClick="BrowsePhotoAsync">
+                            Browse Images
+                        </MudButton>
+                    </div>
+                </MudPaper>
+            }
+        </MudContainer>
+    </DialogContent>
+
+    @* DESIGN LANGUAGE: Sticky Modal Footer *@
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="CloseDialog">Close</MudButton>
+        @if (_scanResult != null && !_isSaved)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveScanResultAsync">
+                Save to Gradebook
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public Assessment Assessment { get; set; } = default!;
+
+    private List<Student> _students = new();
+    private Student? _matchedStudent;
+    private string _selectedVersion = "A";
+    private bool _isProcessing = false;
+    private bool _isSaved = false;
+
+    private OmrScanOutput? _scanResult;
+    private ScoredSubmissionResult? _scoreResult;
+    private string? _currentRawDataUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _students = await AssessmentService.GetStudentsAsync();
+        if (Assessment.Keys.Any())
+        {
+            _selectedVersion = Assessment.Keys.First().VersionLabel;
+        }
+    }
+
+    private async Task CapturePhotoAsync()
+    {
+        var photo = await CameraService.CapturePhotoAsync();
+        if (photo == null) return;
+        await ProcessImageDataUrlAsync(photo.ToDataUrl());
+    }
+
+    private async Task BrowsePhotoAsync()
+    {
+        var photo = await CameraService.BrowsePhotoAsync();
+        if (photo == null) return;
+        await ProcessImageDataUrlAsync(photo.ToDataUrl());
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        using var stream = file.OpenReadStream(maxAllowedSize: 15 * 1024 * 1024);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var bytes = ms.ToArray();
+        string dataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(bytes)}";
+
+        await ProcessImageDataUrlAsync(dataUrl);
+    }
+
+    private async Task ProcessImageDataUrlAsync(string dataUrl)
+    {
+        _currentRawDataUrl = dataUrl;
+        _isProcessing = true;
+        _isSaved = false;
+        StateHasChanged();
+
+        try
+        {
+            var activeKey = Assessment.Keys.FirstOrDefault(k => k.VersionLabel == _selectedVersion) 
+                            ?? Assessment.Keys.FirstOrDefault() 
+                            ?? new AssessmentKey { VersionLabel = "A" };
+
+            var keyMap = activeKey.GetAnswers();
+
+            var result = await OmrScannerService.ProcessSheetAsync(
+                dataUrl,
+                Assessment.QuestionCount,
+                Assessment.OptionsPerQuestion,
+                keyMap
+            );
+
+            if (result != null)
+            {
+                _scanResult = result;
+                if (!string.IsNullOrWhiteSpace(result.DetectedVersion) &&
+                    Assessment.Keys.Any(k => k.VersionLabel == result.DetectedVersion))
+                {
+                    _selectedVersion = result.DetectedVersion;
+                    activeKey = Assessment.Keys.First(k => k.VersionLabel == _selectedVersion);
+                }
+
+                // Match student by ID number
+                if (!string.IsNullOrWhiteSpace(result.DetectedStudentId))
+                {
+                    _matchedStudent = _students.FirstOrDefault(s => s.StudentIdNumber == result.DetectedStudentId);
+                }
+
+                // Score the submission
+                _scoreResult = ScoringService.ScoreSubmission(Assessment, activeKey, result.GetAnswers());
+                Snackbar.Add($"Graded sheet: {_scoreResult.TotalScore}/{_scoreResult.MaxScore} ({_scoreResult.LetterGrade})", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Could not detect bubble sheet corners. Please ensure good lighting and all 4 black corner squares are visible.", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"OMR processing error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnStudentChanged(Student? student)
+    {
+        _matchedStudent = student;
+    }
+
+    private void OnVersionChanged(string version)
+    {
+        _selectedVersion = version;
+        var activeKey = Assessment.Keys.FirstOrDefault(k => k.VersionLabel == version);
+        if (activeKey != null && _scanResult != null)
+        {
+            _scoreResult = ScoringService.ScoreSubmission(Assessment, activeKey, _scanResult.GetAnswers());
+        }
+    }
+
+    private async Task SaveScanResultAsync()
+    {
+        if (_scanResult == null || _scoreResult == null) return;
+
+        var scan = new AnswerSheetScan
+        {
+            Id = Guid.CreateVersion7(),
+            AssessmentId = Assessment.Id,
+            StudentId = _matchedStudent?.Id,
+            DetectedStudentIdNumber = _matchedStudent?.StudentIdNumber ?? _scanResult.DetectedStudentId,
+            DetectedVersion = _selectedVersion,
+            TotalScore = _scoreResult.TotalScore,
+            MaxScore = _scoreResult.MaxScore,
+            ScannedAtUtc = DateTime.UtcNow,
+            ParsedAnswersJson = System.Text.Json.JsonSerializer.Serialize(_scanResult.GetAnswers()),
+            ScannedPhotoUrl = _scanResult.RectifiedImageUrl,
+            RequiresReview = _scanResult.RequiresReview
+        };
+
+        await AssessmentService.SaveScanAsync(scan);
+        _isSaved = true;
+        Snackbar.Add("Submission successfully saved to gradebook!", Severity.Success);
+    }
+
+    private void ResetForNextScan()
+    {
+        _scanResult = null;
+        _scoreResult = null;
+        _matchedStudent = null;
+        _isSaved = false;
+    }
+
+    private string GetScoreColorHex() => (_scoreResult?.Percentage ?? 0) switch
+    {
+        >= 90m => "#2e7d32",
+        >= 75m => "#1976d2",
+        >= 60m => "#f57c00",
+        _ => "#d32f2f"
+    };
+
+    private Color GetScoreMudColor() => (_scoreResult?.Percentage ?? 0) switch
+    {
+        >= 90m => Color.Success,
+        >= 75m => Color.Info,
+        >= 60m => Color.Warning,
+        _ => Color.Error
+    };
+
+    private void CloseDialog() => MudDialog.Close(DialogResult.Ok(true));
+}

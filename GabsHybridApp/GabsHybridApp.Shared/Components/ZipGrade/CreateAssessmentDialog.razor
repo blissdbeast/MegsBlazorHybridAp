@@ -1,0 +1,66 @@
+@using GabsHybridApp.Shared.Models
+@using MudBlazor
+
+@* DESIGN LANGUAGE: Sticky Modal Footer — Mobile full-width stacked / Desktop right-aligned action buttons *@
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_isValid">
+            <MudGrid Spacing="2">
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Title" Label="Assessment Title" Required="true" RequiredError="Assessment title is required." Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.Subject" Label="Subject" Required="true" RequiredError="Subject is required." Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.Section" Label="Class / Section" Required="true" RequiredError="Section is required." Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int" Label="Question Count" @bind-Value="_model.QuestionCount" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        <MudSelectItem Value="10">10 Questions (Quick Check)</MudSelectItem>
+                        <MudSelectItem Value="20">20 Questions (Standard Quiz)</MudSelectItem>
+                        <MudSelectItem Value="50">50 Questions (Midterm Exam)</MudSelectItem>
+                        <MudSelectItem Value="100">100 Questions (Comprehensive)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int" Label="Options per Question" @bind-Value="_model.OptionsPerQuestion" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        <MudSelectItem Value="4">4 Options (A - D)</MudSelectItem>
+                        <MudSelectItem Value="5">5 Options (A - E)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+
+    @* DESIGN LANGUAGE: Sticky Modal Footer *@
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@(!_isValid)">
+            Create Assessment
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private MudForm _form = default!;
+    private bool _isValid;
+    private Assessment _model = new()
+    {
+        Id = Guid.CreateVersion7(),
+        QuestionCount = 20,
+        OptionsPerQuestion = 4
+    };
+
+    private void Submit()
+    {
+        if (_isValid)
+        {
+            MudDialog.Close(DialogResult.Ok(_model));
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

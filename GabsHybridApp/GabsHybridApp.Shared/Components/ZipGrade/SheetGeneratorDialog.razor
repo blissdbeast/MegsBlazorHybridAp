@@ -1,0 +1,409 @@
+@using GabsHybridApp.Shared.Models
+@using MudBlazor
+@inject IJSRuntime JS
+
+@* DESIGN LANGUAGE: Sticky Modal Footer — Mobile full-width stacked / Desktop right-aligned action buttons *@
+<MudDialog>
+    <DialogContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="pa-2 pa-sm-4">
+            @* SECTION: Sheet Configuration Controls *@
+            <MudPaper Elevation="0" Outlined="true" Class="pa-3 mb-4 rounded-lg bg-surface">
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" sm="4">
+                        <MudSelect T="int" Label="Question Count" @bind-Value="_questionCount" Variant="Variant.Outlined" Margin="Margin.Dense">
+                            <MudSelectItem Value="10">10 Questions (Exit Ticket)</MudSelectItem>
+                            <MudSelectItem Value="20">20 Questions (Standard Quiz)</MudSelectItem>
+                            <MudSelectItem Value="50">50 Questions (Midterm Exam)</MudSelectItem>
+                            <MudSelectItem Value="100">100 Questions (Comprehensive)</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudSelect T="int" Label="Options per Question" @bind-Value="_optionsCount" Variant="Variant.Outlined" Margin="Margin.Dense">
+                            <MudSelectItem Value="4">4 Options (A - D)</MudSelectItem>
+                            <MudSelectItem Value="5">5 Options (A - E)</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudTextField @bind-Value="_title" Label="Assessment Title" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            @* SECTION: Printable Bubble Sheet Vector Preview *@
+            <div id="printable-bubble-sheet-container" class="bubble-sheet-scroll-wrap">
+                <div class="scantron-sheet-page">
+                    @* 4 Fiducial Corner Alignment Markers *@
+                    <div class="fiducial-marker fiducial-tl"></div>
+                    <div class="fiducial-marker fiducial-tr"></div>
+                    <div class="fiducial-marker fiducial-bl"></div>
+                    <div class="fiducial-marker fiducial-br"></div>
+
+                    @* Sheet Header *@
+                    <div class="scantron-header">
+                        <div class="scantron-title-row">
+                            <span class="scantron-main-title">@(_title.ToUpperInvariant())</span>
+                            <span class="scantron-sub-title">STANDARD OMR ANSWER SHEET &bull; @(_questionCount) QUESTIONS</span>
+                        </div>
+                        <div class="scantron-fields-row">
+                            <div class="scantron-field"><span class="lbl">STUDENT NAME:</span><span class="line"></span></div>
+                            <div class="scantron-field"><span class="lbl">DATE:</span><span class="line"></span></div>
+                        </div>
+                        <div class="scantron-fields-row">
+                            <div class="scantron-field"><span class="lbl">SUBJECT / CLASS:</span><span class="line">@_subject</span></div>
+                            <div class="scantron-field"><span class="lbl">SECTION:</span><span class="line">@_section</span></div>
+                        </div>
+                    </div>
+
+                    @* Top Section: Student ID Grid & Key Version Selector *@
+                    <div class="scantron-metadata-section">
+                        @* Key Version Selector *@
+                        <div class="version-box">
+                            <div class="box-title">KEY VERSION</div>
+                            <div class="version-bubbles">
+                                @foreach (var v in new[] { "A", "B", "C", "D" })
+                                {
+                                    <div class="version-item">
+                                        <span class="omr-bubble version-bubble">@v</span>
+                                    </div>
+                                }
+                            </div>
+                            <div class="version-hint">Fill one version bubble</div>
+                        </div>
+
+                        @* Student ID Grid (5 Digits, 0-9) *@
+                        <div class="student-id-box">
+                            <div class="box-title">STUDENT ID NUMBER</div>
+                            <div class="id-grid-header">
+                                <div class="id-digit-write"></div>
+                                <div class="id-digit-write"></div>
+                                <div class="id-digit-write"></div>
+                                <div class="id-digit-write"></div>
+                                <div class="id-digit-write"></div>
+                            </div>
+                            <div class="id-grid-bubbles">
+                                @for (int digit = 0; digit <= 9; digit++)
+                                {
+                                    <div class="id-grid-row">
+                                        <span class="digit-lbl">@digit</span>
+                                        @for (int col = 0; col < 5; col++)
+                                        {
+                                            <span class="omr-bubble id-bubble">@digit</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    @* Question Answer Columns *@
+                    <div class="scantron-questions-grid" style="grid-template-columns: repeat(@_columnsCount, 1fr);">
+                        @for (int col = 0; col < _columnsCount; col++)
+                        {
+                            int startQ = (col * _rowsPerColumn) + 1;
+                            int endQ = Math.Min(_questionCount, (col + 1) * _rowsPerColumn);
+
+                            <div class="scantron-column">
+                                @for (int q = startQ; q <= endQ; q++)
+                                {
+                                    <div class="q-row">
+                                        <span class="q-num">@q.ToString("D2").</span>
+                                        <div class="q-bubbles">
+                                            @for (int opt = 0; opt < _optionsCount; opt++)
+                                            {
+                                                char letter = (char)('A' + opt);
+                                                <span class="omr-bubble q-bubble">@letter</span>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @* Bottom Instructions Footer *@
+                    <div class="scantron-footer">
+                        <span>INSTRUCTIONS: Completely fill bubbles with pencil or black pen. Erase cleanly. Do not fold or mark outside bubbles.</span>
+                    </div>
+                </div>
+            </div>
+        </MudContainer>
+    </DialogContent>
+
+    @* DESIGN LANGUAGE: Sticky Modal Footer *@
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Cancel">Close</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print" OnClick="PrintSheetAsync">
+            Print Sheets
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    .bubble-sheet-scroll-wrap {
+        display: flex;
+        justify-content: center;
+        background: #e0e0e0;
+        padding: 16px;
+        border-radius: 8px;
+        overflow-x: auto;
+    }
+
+    .scantron-sheet-page {
+        position: relative;
+        width: 794px; /* A4 standard width at 96 DPI */
+        min-height: 1123px; /* A4 standard height at 96 DPI */
+        background: #ffffff;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        padding: 40px 48px;
+        box-sizing: border-box;
+        font-family: 'Roboto', Arial, sans-serif;
+        color: #111111;
+        user-select: none;
+    }
+
+    /* 4 Fiducial Alignment Markers */
+    .fiducial-marker {
+        position: absolute;
+        width: 28px;
+        height: 28px;
+        background-color: #000000;
+    }
+    .fiducial-tl { top: 32px; left: 32px; }
+    .fiducial-tr { top: 32px; right: 32px; }
+    .fiducial-bl { bottom: 32px; left: 32px; }
+    .fiducial-br { bottom: 32px; right: 32px; }
+
+    /* Header */
+    .scantron-header {
+        margin-top: 10px;
+        margin-bottom: 16px;
+        border-bottom: 2px solid #000000;
+        padding-bottom: 10px;
+    }
+    .scantron-title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 8px;
+    }
+    .scantron-main-title {
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+    }
+    .scantron-sub-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: #444444;
+    }
+    .scantron-fields-row {
+        display: flex;
+        gap: 20px;
+        margin-top: 6px;
+    }
+    .scantron-field {
+        flex: 1;
+        display: flex;
+        align-items: flex-end;
+        gap: 6px;
+    }
+    .scantron-field .lbl {
+        font-size: 10px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .scantron-field .line {
+        flex: 1;
+        border-bottom: 1px solid #222222;
+        min-height: 14px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    /* Metadata Box */
+    .scantron-metadata-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 16px;
+        gap: 16px;
+    }
+    .version-box, .student-id-box {
+        border: 1.5px solid #000000;
+        padding: 8px 12px;
+        border-radius: 4px;
+    }
+    .version-box {
+        flex: 1;
+        max-width: 250px;
+    }
+    .student-id-box {
+        flex: 1;
+        max-width: 280px;
+    }
+    .box-title {
+        font-size: 10px;
+        font-weight: 800;
+        text-align: center;
+        margin-bottom: 6px;
+        letter-spacing: 0.5px;
+    }
+    .version-bubbles {
+        display: flex;
+        justify-content: space-around;
+        padding: 6px 0;
+    }
+    .version-hint {
+        font-size: 9px;
+        color: #666666;
+        text-align: center;
+        margin-top: 4px;
+    }
+
+    /* ID Grid */
+    .id-grid-header {
+        display: flex;
+        justify-content: space-around;
+        margin-bottom: 4px;
+    }
+    .id-digit-write {
+        width: 22px;
+        height: 20px;
+        border: 1px solid #666666;
+        background: #fafafa;
+    }
+    .id-grid-bubbles {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .id-grid-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+    }
+    .digit-lbl {
+        font-size: 9px;
+        font-weight: bold;
+        width: 12px;
+    }
+
+    /* Questions Grid */
+    .scantron-questions-grid {
+        display: grid;
+        gap: 20px;
+        border: 1.5px solid #000000;
+        padding: 12px;
+        border-radius: 4px;
+    }
+    .scantron-column {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .q-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 2px 0;
+    }
+    .q-num {
+        font-size: 11px;
+        font-weight: 700;
+        width: 28px;
+    }
+    .q-bubbles {
+        display: flex;
+        gap: 8px;
+    }
+
+    /* Universal OMR Bubble */
+    .omr-bubble {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 1.5px solid #000000;
+        font-size: 10px;
+        font-weight: 700;
+        color: #000000;
+        background-color: #ffffff;
+    }
+    .id-bubble {
+        width: 17px;
+        height: 17px;
+        font-size: 9px;
+    }
+
+    /* Footer */
+    .scantron-footer {
+        margin-top: 16px;
+        text-align: center;
+        font-size: 9px;
+        font-weight: 600;
+        color: #555555;
+        border-top: 1px solid #cccccc;
+        padding-top: 6px;
+    }
+
+    /* Direct Print CSS */
+    @@media print {
+        body * {
+            visibility: hidden;
+        }
+        #printable-bubble-sheet-container, #printable-bubble-sheet-container * {
+            visibility: visible;
+        }
+        #printable-bubble-sheet-container {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            padding: 0;
+            background: none;
+        }
+        .scantron-sheet-page {
+            box-shadow: none;
+            width: 100%;
+            height: 100%;
+            padding: 24px 32px;
+        }
+    }
+</style>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public int InitialQuestionCount { get; set; } = 20;
+    [Parameter] public int InitialOptionsCount { get; set; } = 4;
+    [Parameter] public string Title { get; set; } = "Examination Answer Sheet";
+    [Parameter] public string Subject { get; set; } = "";
+    [Parameter] public string Section { get; set; } = "";
+
+    private int _questionCount = 20;
+    private int _optionsCount = 4;
+    private string _title = "Examination Answer Sheet";
+    private string _subject = "";
+    private string _section = "";
+
+    private int _columnsCount => _questionCount <= 10 ? 1 : (_questionCount <= 50 ? 2 : 4);
+    private int _rowsPerColumn => _questionCount <= 10 ? 10 : (_questionCount <= 20 ? 10 : 25);
+
+    protected override void OnInitialized()
+    {
+        _questionCount = InitialQuestionCount;
+        _optionsCount = InitialOptionsCount;
+        _title = Title;
+        _subject = Subject;
+        _section = Section;
+    }
+
+    private async Task PrintSheetAsync()
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

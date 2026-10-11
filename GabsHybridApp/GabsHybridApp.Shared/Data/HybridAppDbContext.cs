@@ -11,10 +11,17 @@ public class HybridAppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        var schema = this.GetService<IConfiguration>().GetConnectionString("Schema");
-        if (!string.IsNullOrWhiteSpace(schema) && !Database.IsSqlite())
+        try
         {
-            modelBuilder.HasDefaultSchema(schema);
+            var schema = this.GetService<IConfiguration>()?.GetConnectionString("Schema");
+            if (!string.IsNullOrWhiteSpace(schema) && !Database.IsSqlite())
+            {
+                modelBuilder.HasDefaultSchema(schema);
+            }
+        }
+        catch
+        {
+            // Ignore during design-time factory execution without IConfiguration
         }
 
         // Product config
@@ -39,6 +46,36 @@ public class HybridAppDbContext : DbContext
         {
             e.HasIndex(d => d.DeviceId).IsUnique();
         });
+
+        // Assessment config
+        modelBuilder.Entity<Assessment>(e =>
+        {
+            e.HasMany(a => a.Keys)
+             .WithOne(k => k.Assessment)
+             .HasForeignKey(k => k.AssessmentId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasMany(a => a.Scans)
+             .WithOne(s => s.Assessment)
+             .HasForeignKey(s => s.AssessmentId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Student config
+        modelBuilder.Entity<Student>(e =>
+        {
+            e.HasIndex(s => s.StudentIdNumber).IsUnique();
+            e.HasMany(s => s.Scans)
+             .WithOne(sc => sc.Student)
+             .HasForeignKey(sc => sc.StudentId)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // AnswerSheetScan config
+        modelBuilder.Entity<AnswerSheetScan>(e =>
+        {
+            e.HasIndex(s => new { s.AssessmentId, s.DetectedStudentIdNumber });
+        });
     }
 
     public DbSet<UserAccount> UserAccounts { get; set; }
@@ -48,4 +85,8 @@ public class HybridAppDbContext : DbContext
     public DbSet<OrderItem> OrderItems { get; set; }
     public DbSet<RegisteredDevice> RegisteredDevices { get; set; }
     public DbSet<BackupRecord> BackupRecords { get; set; }
+    public DbSet<Assessment> Assessments { get; set; }
+    public DbSet<AssessmentKey> AssessmentKeys { get; set; }
+    public DbSet<AnswerSheetScan> AnswerSheetScans { get; set; }
+    public DbSet<Student> Students { get; set; }
 }

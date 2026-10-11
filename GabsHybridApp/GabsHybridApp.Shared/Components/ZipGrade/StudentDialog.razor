@@ -1,0 +1,51 @@
+@using GabsHybridApp.Shared.Models
+@using MudBlazor
+
+@* DESIGN LANGUAGE: Sticky Modal Footer — Mobile full-width stacked / Desktop right-aligned action buttons *@
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_isValid">
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Student.StudentIdNumber" Label="Student ID Number" Required="true" RequiredError="Student ID number is required (e.g. 10001)." Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Student.Section" Label="Class / Section" Required="true" RequiredError="Section is required." Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Student.FullName" Label="Full Name" Required="true" RequiredError="Full name is required." Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Student.Email" Label="Email Address (Optional)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+
+    @* DESIGN LANGUAGE: Sticky Modal Footer *@
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@(!_isValid)">
+            Save Student
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public Student Student { get; set; } = new();
+
+    private MudForm _form = default!;
+    private bool _isValid;
+
+    private void Submit()
+    {
+        if (_isValid)
+        {
+            MudDialog.Close(DialogResult.Ok(Student));
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

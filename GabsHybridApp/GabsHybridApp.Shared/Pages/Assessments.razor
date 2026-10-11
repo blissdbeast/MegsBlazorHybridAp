@@ -1,0 +1,302 @@
+@page "/assessments"
+@using GabsHybridApp.Shared.Models
+@using GabsHybridApp.Shared.Services
+@using GabsHybridApp.Shared.Components.ZipGrade
+@using MudBlazor
+@inject IAssessmentService AssessmentService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavManager
+
+<PageTitle>ZipGrade - Assessment Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.False" Class="px-0 mt-4 mb-8">
+    @* SECTION: Page Hero Header *@
+    <div class="d-flex justify-space-between align-center mb-4 flex-wrap gap-2">
+        <div class="d-flex align-center gap-3">
+            <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Large">
+                <MudIcon Icon="@Icons.Material.Filled.Checklist" Size="Size.Large" />
+            </MudAvatar>
+            <div>
+                <MudText Typo="Typo.h5" Class="font-weight-bold">ZipGrade Assessments</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">OMR Bubble Sheet Grading, Camera Scanning & Psychometric Item Analysis</MudText>
+            </div>
+        </div>
+
+        <div class="d-flex align-center gap-2 flex-wrap">
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.People" Size="Size.Small" OnClick="@(() => NavManager.NavigateTo("/students"))">
+                Student Roster
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Print" Size="Size.Small" OnClick="OpenSheetGeneratorDialog">
+                Print Sheets
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Size="Size.Small" OnClick="OpenCreateAssessmentDialog">
+                New Assessment
+            </MudButton>
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Default" Size="Size.Small" OnClick="LoadDataAsync" />
+        </div>
+    </div>
+
+    @* SECTION: KPI Metric Grid *@
+    @* DESIGN LANGUAGE: KPI Metric Grid — Responsive 2x2 mobile wrap / 4-column desktop dashboard cards *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="3">
+            <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Assessments</MudText>
+                        <MudText Typo="Typo.h5" Class="font-weight-bold">@_assessments.Count</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Medium">
+                        <MudIcon Icon="@Icons.Material.Filled.Assignment" Size="Size.Small" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Papers Graded</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Success" Class="font-weight-bold">
+                            @_assessments.Sum(a => a.Scans.Count)
+                        </MudText>
+                    </div>
+                    <MudAvatar Color="Color.Success" Variant="Variant.Outlined" Size="Size.Medium">
+                        <MudIcon Icon="@Icons.Material.Filled.DocumentScanner" Size="Size.Small" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Overall Average</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Info" Class="font-weight-bold">
+                            @(GetOverallAveragePct())%
+                        </MudText>
+                    </div>
+                    <MudAvatar Color="Color.Info" Variant="Variant.Outlined" Size="Size.Medium">
+                        <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Small" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Active Sections</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Warning" Class="font-weight-bold">
+                            @(_assessments.Select(a => a.Section).Distinct().Count())
+                        </MudText>
+                    </div>
+                    <MudAvatar Color="Color.Warning" Variant="Variant.Outlined" Size="Size.Medium">
+                        <MudIcon Icon="@Icons.Material.Filled.Class" Size="Size.Small" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* SECTION: Unified Filter & Action Bar *@
+    @* DESIGN LANGUAGE: Unified Action Bar — Search debounce + Filter menu + Action button cluster *@
+    <MudPaper Elevation="1" Class="pa-3 mb-4 rounded-lg">
+        <div class="d-flex flex-wrap align-center justify-space-between gap-3">
+            <div style="min-width: 260px; max-width: 380px;" class="flex-grow-1">
+                <MudTextField @bind-Value="_searchQuery" Placeholder="Search title, subject, section..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
+            </div>
+            <div class="d-flex align-center gap-2">
+                <MudSelect T="int?" Label="Questions Filter" @bind-Value="_filterQuestions" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Style="min-width: 160px;">
+                    <MudSelectItem Value="@((int?)10)">10 Questions</MudSelectItem>
+                    <MudSelectItem Value="@((int?)20)">20 Questions</MudSelectItem>
+                    <MudSelectItem Value="@((int?)50)">50 Questions</MudSelectItem>
+                    <MudSelectItem Value="@((int?)100)">100 Questions</MudSelectItem>
+                </MudSelect>
+            </div>
+        </div>
+    </MudPaper>
+
+    @* SECTION: Assessments Table *@
+    @* DESIGN LANGUAGE: Responsive Table Container — Zero mobile elevation/padding, desktop surface paper *@
+    <MudPaper Elevation="0" Class="pa-0 pa-sm-4 mud-elevation-sm-3 bg-transparent bg-sm-surface rounded-lg">
+        <MudTable Items="FilteredAssessments" Dense="true" Hover="true" Loading="_loading" Breakpoint="Breakpoint.Sm" Elevation="0">
+            <HeaderContent>
+                <MudTh>Assessment Title</MudTh>
+                <MudTh>Subject &amp; Section</MudTh>
+                <MudTh>Sheet Layout</MudTh>
+                <MudTh>Versions</MudTh>
+                <MudTh>Scans</MudTh>
+                <MudTh>Avg Score</MudTh>
+                <MudTh Class="text-right">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Assessment Title">
+                    <div class="d-flex align-center gap-2">
+                        <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">
+                            <MudIcon Icon="@Icons.Material.Filled.Quiz" Size="Size.Small" />
+                        </MudAvatar>
+                        <div>
+                            <MudLink Href="@($"/assessments/{context.Id}")" Typo="Typo.subtitle2" Class="font-weight-bold">
+                                @context.Title
+                            </MudLink>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
+                                Created @context.CreatedAtUtc.ToString("MMM dd, yyyy")
+                            </MudText>
+                        </div>
+                    </div>
+                </MudTd>
+                <MudTd DataLabel="Subject &amp; Section">
+                    <MudText Typo="Typo.body2" Class="font-weight-medium">@context.Subject</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Section</MudText>
+                </MudTd>
+                <MudTd DataLabel="Sheet Layout">
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small" Variant="Variant.Outlined">
+                        @context.QuestionCount Qs (@context.OptionsPerQuestion Options)
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Versions">
+                    <div class="d-flex gap-1">
+                        @foreach (var key in context.Keys)
+                        {
+                            <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Filled">
+                                @key.VersionLabel
+                            </MudChip>
+                        }
+                    </div>
+                </MudTd>
+                <MudTd DataLabel="Scans">
+                    <MudBadge Content="@context.Scans.Count" Color="Color.Success" Overlap="true" Class="mx-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Medium" Color="Color.Default" />
+                    </MudBadge>
+                </MudTd>
+                <MudTd DataLabel="Avg Score">
+                    @if (context.Scans.Count > 0)
+                    {
+                        decimal avg = Math.Round(context.Scans.Average(s => s.Percentage), 1);
+                        <MudText Typo="Typo.body2" Class="font-weight-bold" Color="@(avg >= 75 ? Color.Success : Color.Warning)">
+                            @avg%
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">No scans yet</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions" Class="text-right">
+                    <div class="d-flex justify-end gap-1">
+                        <MudIconButton Icon="@Icons.Material.Filled.DocumentScanner" Color="Color.Primary" Size="Size.Small" aria-label="Scan Papers" OnClick="@(() => OpenScannerDialog(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Print" Color="Color.Info" Size="Size.Small" aria-label="Print Answer Sheets" OnClick="@(() => OpenPrintDialog(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Color="Color.Default" Size="Size.Small" aria-label="View Gradebook & Keys" OnClick="@(() => NavManager.NavigateTo($"/assessments/{context.Id}"))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" aria-label="Delete Assessment" OnClick="@(() => DeleteAssessmentAsync(context))" />
+                    </div>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2" Class="pa-4 text-center">No assessments found. Click 'New Assessment' to create one!</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<Assessment> _assessments = new();
+    private bool _loading = true;
+    private string _searchQuery = "";
+    private int? _filterQuestions;
+
+    private IEnumerable<Assessment> FilteredAssessments => _assessments
+        .Where(a => string.IsNullOrWhiteSpace(_searchQuery) ||
+                    a.Title.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                    a.Subject.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                    a.Section.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+        .Where(a => !_filterQuestions.HasValue || a.QuestionCount == _filterQuestions.Value);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        try
+        {
+            _assessments = await AssessmentService.GetAssessmentsAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private decimal GetOverallAveragePct()
+    {
+        var allScans = _assessments.SelectMany(a => a.Scans).ToList();
+        return allScans.Count > 0 ? Math.Round(allScans.Average(s => s.Percentage), 1) : 0;
+    }
+
+    private async Task OpenCreateAssessmentDialog()
+    {
+        var parameters = new DialogParameters<CreateAssessmentDialog>();
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<CreateAssessmentDialog>("Create New Assessment", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is Assessment created)
+        {
+            await AssessmentService.SaveAssessmentAsync(created);
+            Snackbar.Add("Assessment created successfully!", Severity.Success);
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task OpenScannerDialog(Assessment assessment)
+    {
+        var parameters = new DialogParameters<ScannerDialog>
+        {
+            { x => x.Assessment, assessment }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<ScannerDialog>($"Scan Bubble Sheets - {assessment.Title}", parameters, options);
+        await dialog.Result;
+        await LoadDataAsync();
+    }
+
+    private async Task OpenPrintDialog(Assessment assessment)
+    {
+        var parameters = new DialogParameters<SheetGeneratorDialog>
+        {
+            { x => x.InitialQuestionCount, assessment.QuestionCount },
+            { x => x.InitialOptionsCount, assessment.OptionsPerQuestion },
+            { x => x.Title, assessment.Title },
+            { x => x.Subject, assessment.Subject },
+            { x => x.Section, assessment.Section }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        await DialogService.ShowAsync<SheetGeneratorDialog>("Print Bubble Sheets", parameters, options);
+    }
+
+    private async Task OpenSheetGeneratorDialog()
+    {
+        var parameters = new DialogParameters<SheetGeneratorDialog>();
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        await DialogService.ShowAsync<SheetGeneratorDialog>("Generate & Print Bubble Sheets", parameters, options);
+    }
+
+    private async Task DeleteAssessmentAsync(Assessment assessment)
+    {
+        bool? confirmed = await DialogService.ShowMessageBoxAsync(
+            "Confirm Delete",
+            $"Are you sure you want to delete assessment '{assessment.Title}' along with all its keys and {assessment.Scans.Count} student scans?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            await AssessmentService.DeleteAssessmentAsync(assessment.Id);
+            Snackbar.Add("Assessment deleted successfully.", Severity.Info);
+            await LoadDataAsync();
+        }
+    }
+}

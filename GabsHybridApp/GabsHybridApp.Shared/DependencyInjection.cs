@@ -36,6 +36,10 @@ public static class DependencyInjection
         services.AddSingleton<GabsHybridApp.Shared.Services.ModelAdapter.SchemaIntrospectionService>();
         services.AddSingleton<GabsHybridApp.Shared.Services.ModelAdapter.AdaptiveTableReader>();
         services.AddScoped<IDataBackupService, DataBackupService>();
+        services.AddScoped<IScoringService, ScoringService>();
+        services.AddScoped<IItemAnalysisService, ItemAnalysisService>();
+        services.AddScoped<IAssessmentService, AssessmentService>();
+        services.AddScoped<IOmrScannerService, OmrScannerService>();
 
         // UI libs
         services.AddMudServices();

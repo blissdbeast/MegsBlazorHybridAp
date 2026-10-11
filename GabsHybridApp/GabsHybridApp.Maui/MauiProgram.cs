@@ -57,6 +57,7 @@ public static class MauiProgram
         app.MigrateDb<HybridAppDbContext>(enableWal: true, seed: db =>
         {
             db.SeedOrderData();
+            db.SeedZipGradeData();
         });
 
         return app;

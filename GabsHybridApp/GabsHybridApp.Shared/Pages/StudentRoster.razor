@@ -1,0 +1,286 @@
+@page "/students"
+@using GabsHybridApp.Shared.Models
+@using GabsHybridApp.Shared.Services
+@using GabsHybridApp.Shared.Components.ZipGrade
+@using MudBlazor
+@inject IAssessmentService AssessmentService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavManager
+@inject IJSRuntime JS
+
+<PageTitle>Student Roster - ZipGrade</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.False" Class="px-0 mt-4 mb-8">
+    @* SECTION: Page Hero Header *@
+    <div class="d-flex justify-space-between align-center mb-4 flex-wrap gap-2">
+        <div class="d-flex align-center gap-3">
+            <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Large">
+                <MudIcon Icon="@Icons.Material.Filled.School" Size="Size.Large" />
+            </MudAvatar>
+            <div>
+                <MudText Typo="Typo.h5" Class="font-weight-bold">Student Roster</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Class Rosters, Student ID Numbers &amp; Automated OMR Matching</MudText>
+            </div>
+        </div>
+
+        <div class="d-flex align-center gap-2 flex-wrap">
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" OnClick="@(() => NavManager.NavigateTo("/assessments"))">
+                Assessments
+            </MudButton>
+            <InputFile id="rosterCsvInput" OnChange="ImportCsvAsync" hidden accept=".csv" />
+            <MudButton HtmlTag="label" Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.FileUpload" Size="Size.Small" for="rosterCsvInput">
+                Import CSV
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" OnClick="OpenAddStudentDialog">
+                Add Student
+            </MudButton>
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Default" Size="Size.Small" OnClick="LoadStudentsAsync" aria-label="Refresh Roster" />
+        </div>
+    </div>
+
+    @* SECTION: Summary Metrics Cards *@
+    @* DESIGN LANGUAGE: KPI Metric Grid — Responsive 2x2 mobile wrap / 4-column desktop dashboard cards *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="3">
+            <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Students</MudText>
+                        <MudText Typo="Typo.h5" Class="font-weight-bold">@_students.Count</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Medium">
+                        <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Small" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Sections Enrolled</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Info" Class="font-weight-bold">
+                            @(_students.Select(s => s.Section).Where(s => !string.IsNullOrEmpty(s)).Distinct().Count())
+                        </MudText>
+                    </div>
+                    <MudAvatar Color="Color.Info" Variant="Variant.Outlined" Size="Size.Medium">
+                        <MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Small" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Assigned IDs</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Success" Class="font-weight-bold">
+                            @(_students.Count(s => !string.IsNullOrEmpty(s.StudentIdNumber)))
+                        </MudText>
+                    </div>
+                    <MudAvatar Color="Color.Success" Variant="Variant.Outlined" Size="Size.Medium">
+                        <MudIcon Icon="@Icons.Material.Filled.Badge" Size="Size.Small" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Outlined="true" Class="pa-3 rounded-lg">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Linked Emails</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Warning" Class="font-weight-bold">
+                            @(_students.Count(s => !string.IsNullOrEmpty(s.Email)))
+                        </MudText>
+                    </div>
+                    <MudAvatar Color="Color.Warning" Variant="Variant.Outlined" Size="Size.Medium">
+                        <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* SECTION: Search & Filter Toolbar *@
+    @* DESIGN LANGUAGE: Unified Action Bar — Search debounce + Filter menu + Action button cluster *@
+    <MudPaper Elevation="1" Class="pa-3 mb-4 rounded-lg">
+        <div class="d-flex flex-wrap align-center justify-space-between gap-3">
+            <div style="min-width: 260px; max-width: 400px;" class="flex-grow-1">
+                <MudTextField @bind-Value="_searchQuery" Placeholder="Search student ID, name, section, email..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
+            </div>
+
+            <div class="d-flex align-center gap-2">
+                <MudSelect T="string" Label="Filter Section" @bind-Value="_filterSection" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Style="min-width: 180px;">
+                    @foreach (var sec in _students.Select(s => s.Section).Where(s => !string.IsNullOrEmpty(s)).Distinct())
+                    {
+                        <MudSelectItem Value="@sec">@sec</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+        </div>
+    </MudPaper>
+
+    @* SECTION: Students Table *@
+    @* DESIGN LANGUAGE: Responsive Table Container — Zero mobile elevation/padding, desktop surface paper *@
+    <MudPaper Elevation="0" Class="pa-0 pa-sm-4 mud-elevation-sm-3 bg-transparent bg-sm-surface rounded-lg">
+        <MudTable Items="FilteredStudents" Dense="true" Hover="true" Loading="_loading" Breakpoint="Breakpoint.Sm" Elevation="0">
+            <HeaderContent>
+                <MudTh>Student ID</MudTh>
+                <MudTh>Full Name</MudTh>
+                <MudTh>Section</MudTh>
+                <MudTh>Email</MudTh>
+                <MudTh Class="text-right">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Student ID">
+                    <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Filled">
+                        @context.StudentIdNumber
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Full Name">
+                    <div class="d-flex align-center gap-2">
+                        <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">
+                            @GetInitials(context.FullName)
+                        </MudAvatar>
+                        <MudText Typo="Typo.body2" Class="font-weight-medium">@context.FullName</MudText>
+                    </div>
+                </MudTd>
+                <MudTd DataLabel="Section">
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small" Variant="Variant.Outlined">
+                        @context.Section
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Email">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        @(string.IsNullOrEmpty(context.Email) ? "—" : context.Email)
+                    </MudText>
+                </MudTd>
+                <MudTd DataLabel="Actions" Class="text-right">
+                    <div class="d-flex justify-end gap-1">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Default" Size="Size.Small" aria-label="Edit Student" OnClick="@(() => OpenEditStudentDialog(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" aria-label="Delete Student" OnClick="@(() => DeleteStudentAsync(context))" />
+                    </div>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2" Class="pa-4 text-center">No students found. Click 'Add Student' or 'Import CSV' to populate roster.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<Student> _students = new();
+    private bool _loading = true;
+    private string _searchQuery = "";
+    private string? _filterSection;
+
+    private IEnumerable<Student> FilteredStudents => _students
+        .Where(s => string.IsNullOrWhiteSpace(_searchQuery) ||
+                    s.StudentIdNumber.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                    s.FullName.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                    s.Section.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                    (s.Email != null && s.Email.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase)))
+        .Where(s => string.IsNullOrEmpty(_filterSection) || s.Section == _filterSection);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStudentsAsync();
+    }
+
+    private async Task LoadStudentsAsync()
+    {
+        _loading = true;
+        try
+        {
+            _students = await AssessmentService.GetStudentsAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenAddStudentDialog()
+    {
+        var parameters = new DialogParameters<StudentDialog>
+        {
+            { x => x.Student, new Student { Id = Guid.NewGuid() } }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<StudentDialog>("Add Student to Roster", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is Student student)
+        {
+            await AssessmentService.SaveStudentAsync(student);
+            Snackbar.Add($"Student '{student.FullName}' added successfully!", Severity.Success);
+            await LoadStudentsAsync();
+        }
+    }
+
+    private async Task OpenEditStudentDialog(Student student)
+    {
+        var editCopy = new Student
+        {
+            Id = student.Id,
+            StudentIdNumber = student.StudentIdNumber,
+            FullName = student.FullName,
+            Section = student.Section,
+            Email = student.Email
+        };
+
+        var parameters = new DialogParameters<StudentDialog>
+        {
+            { x => x.Student, editCopy }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<StudentDialog>("Edit Student Profile", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is Student updated)
+        {
+            await AssessmentService.SaveStudentAsync(updated);
+            Snackbar.Add($"Updated '{updated.FullName}'.", Severity.Success);
+            await LoadStudentsAsync();
+        }
+    }
+
+    private async Task DeleteStudentAsync(Student student)
+    {
+        bool? confirmed = await DialogService.ShowMessageBoxAsync(
+            "Confirm Delete",
+            $"Are you sure you want to remove student '{student.FullName}' (ID: {student.StudentIdNumber}) from the roster?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            await AssessmentService.DeleteStudentAsync(student.Id);
+            Snackbar.Add("Student removed.", Severity.Info);
+            await LoadStudentsAsync();
+        }
+    }
+
+    private async Task ImportCsvAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        string content = await reader.ReadToEndAsync();
+
+        int imported = await AssessmentService.ImportStudentsFromCsvAsync(content);
+        Snackbar.Add($"Successfully imported {imported} students from CSV!", Severity.Success);
+        await LoadStudentsAsync();
+    }
+
+    private string GetInitials(string fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName)) return "?";
+        var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1) return parts[0][0].ToString().ToUpperInvariant();
+        return $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+    }
+}

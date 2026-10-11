@@ -1,0 +1,133 @@
+@using GabsHybridApp.Shared.Models
+@using GabsHybridApp.Shared.Services
+@using MudBlazor
+
+@* DESIGN LANGUAGE: Sticky Modal Footer — Mobile full-width stacked / Desktop right-aligned action buttons *@
+<MudDialog>
+    <DialogContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="pa-2 pa-sm-4">
+            <MudPaper Elevation="0" Outlined="true" Class="pa-3 mb-3 rounded-lg bg-surface">
+                <div class="d-flex flex-wrap justify-space-between align-center gap-2">
+                    <div>
+                        <MudText Typo="Typo.h6" Class="font-weight-bold">
+                            @(Scan.Student?.FullName ?? "Unknown Student")
+                            <span class="ml-2 font-weight-normal text-secondary" style="font-size: 1rem;">
+                                (ID: @Scan.DetectedStudentIdNumber)
+                            </span>
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Version @Scan.DetectedVersion &bull; Scanned: @Scan.ScannedAtUtc.ToString("MMM dd, yyyy HH:mm")
+                        </MudText>
+                    </div>
+
+                    <div class="d-flex align-center gap-2">
+                        <MudChip T="string" Color="@GetScoreColor()" Size="Size.Medium" Variant="Variant.Filled">
+                            @Scan.TotalScore / @Scan.MaxScore Pts (@Scan.Percentage%)
+                        </MudChip>
+                        <MudChip T="string" Color="@GetScoreColor()" Size="Size.Medium" Variant="Variant.Outlined">
+                            Grade @GetLetterGrade()
+                        </MudChip>
+                    </div>
+                </div>
+            </MudPaper>
+
+            <MudGrid Spacing="3">
+                <MudItem xs="12" md="6">
+                    <MudPaper Elevation="1" Class="pa-3 rounded-lg">
+                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-2">Scanned Sheet &amp; Visual Grading</MudText>
+                        @if (!string.IsNullOrEmpty(Scan.ScannedPhotoUrl))
+                        {
+                            <div style="border: 1px solid #ddd; border-radius: 6px; overflow: hidden;">
+                                <img src="@Scan.ScannedPhotoUrl" style="width: 100%; height: auto; display: block;" alt="Scanned Scantron Sheet" />
+                            </div>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Info" Dense="true">Raw photo was not stored for this submission.</MudAlert>
+                        }
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudPaper Elevation="1" Class="pa-3 rounded-lg">
+                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-2">Item Responses vs Answer Key</MudText>
+                        <div style="max-height: 480px; overflow-y: auto;" class="pr-1">
+                            <MudGrid Spacing="1">
+                                @for (int q = 1; q <= Assessment.QuestionCount; q++)
+                                {
+                                    int qNum = q;
+                                    var studentAnswers = _studentAnswers.TryGetValue(qNum, out var sList) ? sList : new List<string>();
+                                    var keyAnswers = _keyAnswers.TryGetValue(qNum, out var kList) ? kList : new List<string>();
+                                    bool isCorrect = keyAnswers.Count > 0 && studentAnswers.Count == keyAnswers.Count && !keyAnswers.Except(studentAnswers).Any();
+
+                                    <MudItem xs="6" sm="4">
+                                        <MudPaper Outlined="true" Class="pa-2 d-flex align-center justify-space-between rounded" Style="@(isCorrect ? "background-color: rgba(46, 125, 50, 0.08);" : "background-color: rgba(211, 47, 47, 0.08);")">
+                                            <div>
+                                                <MudText Typo="Typo.caption" Class="font-weight-bold">Q@qNum</MudText>
+                                                <MudText Typo="Typo.body2" Class="font-weight-bold" Color="@(isCorrect ? Color.Success : Color.Error)">
+                                                    @(studentAnswers.Count > 0 ? string.Join(",", studentAnswers) : "Blank")
+                                                </MudText>
+                                                @if (!isCorrect && keyAnswers.Count > 0)
+                                                {
+                                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                        Key: @string.Join(",", keyAnswers)
+                                                    </MudText>
+                                                }
+                                            </div>
+                                            <MudIcon Icon="@(isCorrect ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)" Color="@(isCorrect ? Color.Success : Color.Error)" Size="Size.Small" />
+                                        </MudPaper>
+                                    </MudItem>
+                                }
+                            </MudGrid>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudContainer>
+    </DialogContent>
+
+    @* DESIGN LANGUAGE: Sticky Modal Footer *@
+    <DialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CloseDialog">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public AnswerSheetScan Scan { get; set; } = default!;
+    [Parameter] public Assessment Assessment { get; set; } = default!;
+
+    private Dictionary<int, List<string>> _studentAnswers = new();
+    private Dictionary<int, List<string>> _keyAnswers = new();
+
+    protected override void OnInitialized()
+    {
+        _studentAnswers = Scan.GetAnswers();
+        var key = Assessment.Keys.FirstOrDefault(k => k.VersionLabel == Scan.DetectedVersion) 
+                  ?? Assessment.Keys.FirstOrDefault();
+        if (key != null)
+        {
+            _keyAnswers = key.GetAnswers();
+        }
+    }
+
+    private Color GetScoreColor() => Scan.Percentage switch
+    {
+        >= 90m => Color.Success,
+        >= 75m => Color.Info,
+        >= 60m => Color.Warning,
+        _ => Color.Error
+    };
+
+    private string GetLetterGrade() => Scan.Percentage switch
+    {
+        >= 90m => "A",
+        >= 80m => "B",
+        >= 70m => "C",
+        >= 60m => "D",
+        _ => "F"
+    };
+
+    private void CloseDialog() => MudDialog.Close();
+}

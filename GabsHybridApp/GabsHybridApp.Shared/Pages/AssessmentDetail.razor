@@ -1,0 +1,267 @@
+@page "/assessments/{Id:guid}"
+@using GabsHybridApp.Shared.Models
+@using GabsHybridApp.Shared.Services
+@using GabsHybridApp.Shared.Components.ZipGrade
+@using MudBlazor
+@inject IAssessmentService AssessmentService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavManager
+@inject IJSRuntime JS
+
+<PageTitle>@(_assessment?.Title ?? "Assessment Details") - ZipGrade</PageTitle>
+
+@if (_assessment == null)
+{
+    <MudContainer MaxWidth="MaxWidth.False" Class="pa-6 text-center">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <MudText Typo="Typo.body2" Class="mt-2">Loading assessment details...</MudText>
+    </MudContainer>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.False" Class="px-0 mt-4 mb-8">
+        @* SECTION: Page Hero Header *@
+        <div class="d-flex justify-space-between align-center mb-4 flex-wrap gap-2">
+            <div class="d-flex align-center gap-3">
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Color="Color.Default" OnClick="@(() => NavManager.NavigateTo("/assessments"))" aria-label="Back to Assessments" />
+                <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Large">
+                    <MudIcon Icon="@Icons.Material.Filled.Quiz" Size="Size.Large" />
+                </MudAvatar>
+                <div>
+                    <MudText Typo="Typo.h5" Class="font-weight-bold">@_assessment.Title</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        @_assessment.Subject &bull; Section: @_assessment.Section &bull; @_assessment.QuestionCount Questions (@_assessment.OptionsPerQuestion Options)
+                    </MudText>
+                </div>
+            </div>
+
+            <div class="d-flex align-center gap-2 flex-wrap">
+                <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Print" Size="Size.Small" OnClick="OpenPrintDialog">
+                    Print Sheets
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.DocumentScanner" Size="Size.Small" OnClick="OpenScannerDialog">
+                    Scan Papers
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.FileDownload" Size="Size.Small" OnClick="ExportCsvAsync">
+                    Export CSV
+                </MudButton>
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Default" Size="Size.Small" OnClick="LoadDataAsync" aria-label="Refresh Assessment" />
+            </div>
+        </div>
+
+        @* SECTION: Assessment Tabs *@
+        <MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" Class="rounded-lg">
+            @* TAB 1: Gradebook & Submissions *@
+            <MudTabPanel Text="Gradebook &amp; Submissions" Icon="@Icons.Material.Filled.Grade" BadgeData="@_assessment.Scans.Count" BadgeColor="Color.Success">
+                @* DESIGN LANGUAGE: Responsive Table Container — Zero mobile elevation/padding, desktop surface paper *@
+                <MudPaper Elevation="0" Class="pa-0 pa-sm-2 bg-transparent">
+                    <div class="d-flex justify-space-between align-center mb-3">
+                        <div>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold">Graded Answer Sheets</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Ranked student results, percentage scores, letter grades, and inspection overlays.
+                            </MudText>
+                        </div>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CameraAlt" Size="Size.Small" OnClick="OpenScannerDialog">
+                            Scan Answer Sheet
+                        </MudButton>
+                    </div>
+
+                    <MudTable Items="_assessment.Scans.OrderByDescending(s => s.Percentage)" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Student ID</MudTh>
+                            <MudTh>Student Name</MudTh>
+                            <MudTh>Version</MudTh>
+                            <MudTh>Score</MudTh>
+                            <MudTh>Percentage</MudTh>
+                            <MudTh>Grade</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Scanned Date</MudTh>
+                            <MudTh Class="text-right">Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Student ID">
+                                <MudChip T="string" Color="Color.Default" Size="Size.Small" Variant="Variant.Outlined">
+                                    @context.DetectedStudentIdNumber
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Student Name">
+                                <MudText Typo="Typo.body2" Class="font-weight-medium">
+                                    @(context.Student?.FullName ?? "Unknown Student")
+                                </MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Version">
+                                <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Filled">
+                                    Version @context.DetectedVersion
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Score">
+                                <MudText Typo="Typo.body2" Class="font-weight-bold">
+                                    @context.TotalScore / @context.MaxScore
+                                </MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Percentage">
+                                <div style="min-width: 100px;">
+                                    <div class="d-flex justify-space-between">
+                                        <MudText Typo="Typo.caption" Class="font-weight-bold">@context.Percentage%</MudText>
+                                    </div>
+                                    <MudProgressLinear Color="@GetScoreProgressColor(context.Percentage)" Value="@((int)context.Percentage)" Rounded="true" Size="Size.Small" />
+                                </div>
+                            </MudTd>
+                            <MudTd DataLabel="Grade">
+                                <MudChip T="string" Color="@GetScoreProgressColor(context.Percentage)" Size="Size.Small" Variant="Variant.Filled">
+                                    @GetGradeLetter(context.Percentage)
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Status">
+                                @if (context.RequiresReview)
+                                {
+                                    <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Filled" Icon="@Icons.Material.Filled.Warning">
+                                        Review
+                                    </MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Color="Color.Success" Size="Size.Small" Variant="Variant.Outlined">
+                                        Verified
+                                    </MudChip>
+                                }
+                            </MudTd>
+                            <MudTd DataLabel="Scanned Date">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @context.ScannedAtUtc.ToString("MMM dd, yyyy HH:mm")
+                                </MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Actions" Class="text-right">
+                                <div class="d-flex justify-end gap-1">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Color="Color.Primary" Size="Size.Small" aria-label="Inspect Scanned Sheet" OnClick="@(() => OpenInspectDialog(context))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" aria-label="Delete Submission" OnClick="@(() => DeleteScanAsync(context))" />
+                                </div>
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText Typo="Typo.body2" Class="pa-4 text-center">No sheets scanned yet. Tap 'Scan Answer Sheet' to begin grading!</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                </MudPaper>
+            </MudTabPanel>
+
+            @* TAB 2: Answer Keys Manager *@
+            <MudTabPanel Text="Answer Keys" Icon="@Icons.Material.Filled.Key" BadgeData="@_assessment.Keys.Count" BadgeColor="Color.Primary">
+                <AnswerKeyEditor Assessment="_assessment" OnSaved="LoadDataAsync" />
+            </MudTabPanel>
+
+            @* TAB 3: Item Analysis & Psychometrics *@
+            <MudTabPanel Text="Item Analysis" Icon="@Icons.Material.Filled.BarChart">
+                <ItemAnalysisView Assessment="_assessment" />
+            </MudTabPanel>
+        </MudTabs>
+    </MudContainer>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private Assessment? _assessment;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _assessment = await AssessmentService.GetAssessmentByIdAsync(Id);
+    }
+
+    private async Task OpenScannerDialog()
+    {
+        if (_assessment == null) return;
+
+        var parameters = new DialogParameters<ScannerDialog>
+        {
+            { x => x.Assessment, _assessment }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<ScannerDialog>($"Scan Bubble Sheets - {_assessment.Title}", parameters, options);
+        await dialog.Result;
+        await LoadDataAsync();
+    }
+
+    private async Task OpenPrintDialog()
+    {
+        if (_assessment == null) return;
+
+        var parameters = new DialogParameters<SheetGeneratorDialog>
+        {
+            { x => x.InitialQuestionCount, _assessment.QuestionCount },
+            { x => x.InitialOptionsCount, _assessment.OptionsPerQuestion },
+            { x => x.Title, _assessment.Title },
+            { x => x.Subject, _assessment.Subject },
+            { x => x.Section, _assessment.Section }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        await DialogService.ShowAsync<SheetGeneratorDialog>("Print Bubble Sheets", parameters, options);
+    }
+
+    private async Task OpenInspectDialog(AnswerSheetScan scan)
+    {
+        if (_assessment == null) return;
+
+        var parameters = new DialogParameters<InspectScanDialog>
+        {
+            { x => x.Scan, scan },
+            { x => x.Assessment, _assessment }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        await DialogService.ShowAsync<InspectScanDialog>("Inspect Graded Sheet", parameters, options);
+    }
+
+    private async Task DeleteScanAsync(AnswerSheetScan scan)
+    {
+        bool? confirmed = await DialogService.ShowMessageBoxAsync(
+            "Confirm Delete",
+            $"Remove scanned sheet for Student ID '{scan.DetectedStudentIdNumber}' ({scan.TotalScore} pts)?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            await AssessmentService.DeleteScanAsync(scan.Id);
+            Snackbar.Add("Scanned sheet deleted.", Severity.Info);
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (_assessment == null) return;
+
+        string csv = AssessmentService.ExportGradebookCsv(_assessment);
+        string fileName = $"{_assessment.Title.Replace(" ", "_")}_Gradebook.csv";
+
+        byte[] fileBytes = System.Text.Encoding.UTF8.GetBytes(csv);
+        string base64 = Convert.ToBase64String(fileBytes);
+        string url = $"data:text/csv;base64,{base64}";
+
+        await JS.InvokeVoidAsync("open", url, "_blank");
+        Snackbar.Add("Gradebook CSV export generated!", Severity.Success);
+    }
+
+    private Color GetScoreProgressColor(decimal pct) => pct switch
+    {
+        >= 90m => Color.Success,
+        >= 75m => Color.Info,
+        >= 60m => Color.Warning,
+        _ => Color.Error
+    };
+
+    private string GetGradeLetter(decimal pct) => pct switch
+    {
+        >= 90m => "A",
+        >= 80m => "B",
+        >= 70m => "C",
+        >= 60m => "D",
+        _ => "F"
+    };
+}

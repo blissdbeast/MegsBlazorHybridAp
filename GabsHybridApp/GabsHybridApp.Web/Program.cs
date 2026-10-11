@@ -125,6 +125,7 @@ app.MigrateDb<HybridAppDbContext>(true, seed: db =>
     }
 
     db.SeedOrderData();
+    db.SeedZipGradeData();
 });
 
 app.MapStaticAssets();
